@@ -14,9 +14,12 @@ ghc-options:
   echo -Werror >> $@
   echo -Wall >> $@
   echo -Wno-name-shadowing >> $@
-  echo -O2 >> $@
+  #echo -O2 >> $@
 
 default-extensions:
   echo LambdaCase >> $@
   echo DuplicateRecordFields >> $@
   echo GADTs >> $@
+
+packages:
+  echo clock >> $@

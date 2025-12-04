@@ -8,14 +8,17 @@ github:              Nick-Chapman/aoc2025.git
 
 dependencies:
 - base >= 4.7 && < 5
+- clock
 - containers
 
 default-extensions:
 - DuplicateRecordFields
 - GADTs
+- GeneralizedNewtypeDeriving
 - ImportQualifiedPost
 - LambdaCase
 - NamedFieldPuns
+- NumericUnderscores
 - ScopedTypeVariables
 
 ghc-options:
