@@ -1,18 +1,33 @@
 module Day10 (main) where
 
-import Misc (check,hist)
+import Misc (check,hist) --nub
 import Par4 (parse,Par,many,terminated,separated,alts,int,lit,nl)
 import Data.Map qualified as Map
+import Data.List (intercalate)
+import Text.Printf (printf)
+import Data.List (minimumBy)
+import Data.Ord (comparing)
 
 main :: IO ()
 main = do
   sam <- parse gram <$> readFile "input/day10.sample"
+  inp <- parse gram <$> readFile "input/day10.input"
   part1_sam <- part1 sam
   print ("day10, part1 (sample-details)", check [2,3,2] $ part1_sam)
   print ("day10, part1 (sample)", check 7 $ sum $ part1_sam)
-  inp <- parse gram <$> readFile "input/day10.input"
   part1_inp <- part1 inp
   print ("day10, part1", check 461 $ sum $ part1_inp)
+
+  part2_sam <- part2 sam
+  print ("day10, part1 (sample)", check [10,12,11] $ part2_sam)
+
+  let expected = [128,42,80,9,75,101,80,32,101,219,91,186,59,54,243,90,138,245,64,127,50,59,88,34,160,163,108,101,69,127,69,57,233,52,47,51,49,64,44,52,69,215,307,249,106,185,84,95,88,38,186,11,65,132,104,64,140,200,62,25,66,93,41,82,55,74,62,108,79,105,77,36,52,65,93,50,89,41,195,177,96,116,63,211,68,85,223,56,58,47,40,7,80,30,74,103,52,64,19,138,98,26,196,53,65,112,60,114,94,48,54,88,233,159,79,58,66,283,135,103,114,111,37,127,257,49,70,103,36,26,88,145,39,107,80,76,161,100,171,48,53,215,64,244,80,96,62,102,24,123,105,57,65,70,72,64,89,83,104,50,177,59,229,62,95,58,279]
+
+  xs <- part2 inp
+  print ("day10, part2 (detail)", check expected $ xs)
+  print ("day10, part2", check 16386 $ sum xs)
+  pure ()
+
 
 part1 :: [Machine] -> IO [Int]
 part1 = mapM solve1
@@ -20,7 +35,6 @@ part1 = mapM solve1
 solve1 :: Machine -> IO Int
 solve1 Machine{lights,buttons} = do
   let goal = [ n | (n,b) <- zip [0::Int ..] lights, b]
-  --print goal
   let cands = power (length buttons)
   let
     testCand bs = do
@@ -33,7 +47,6 @@ solve1 Machine{lights,buttons} = do
       (bs, num, collapse, odds, match)
 
   let trials = [ testCand cand | cand <- cands ]
-  --mapM_ print trials
   pure $ minimum [ num | (_,num,_,_,match) <- trials, match ]
 
 power :: Int -> [[Bool]]
@@ -43,13 +56,117 @@ power n =
       let bss = power (n-1)
       [ False:bs | bs <- bss ] ++ [ True:bs | bs <- bss ]
 
+
+part2 :: [Machine] -> IO [Int]
+part2 ms = do
+  printf "\n%d puzzles to solve...\n" (length ms)
+  mapM solve2 (zip [0..] ms)
+
+solve2 :: (Int,Machine) -> IO Int
+solve2 (i,m) = do
+  printf "puz#%d: %s\n" i (show m)
+  let state = makeState m
+  if i `elem` [10,26,53,99,119,131,164] then print state else pure ()
+  ss <- search state
+  let res = minimum [ sum [ i | (_,i) <- ass ] | State{ass} <- ss ]
+  --print ("#ss=",length ss,"res=",res)
+  pure res
+
+search :: State -> IO [State]
+search s0 = do
+  --print s0
+  prop s0 >>= \case
+    Nothing -> pure []
+    Just s1 -> do
+      if (finished s1) then pure [s1] else do
+        let (x,max) = pickVar s1
+        --print ("pick",x,max)
+        concat <$> sequence [ search s3 | i <- [0..max], Just s3 <- pure (assignVar  s1 x i) ]
+
+prop :: State -> IO (Maybe State)
+prop s =
+  case findUnit s of
+    Nothing -> pure (Just s)
+    Just (x,i) -> do
+      case assignVar s x i of
+        Nothing -> pure Nothing
+        Just s -> prop s
+
+findUnit :: State -> Maybe (Char,Int)
+findUnit State{eqs} = do
+  case [ (c,n) | Equation [c] n <- eqs ] of
+    [] -> Nothing
+    pair:_ -> Just pair
+
+data State = State { ass :: [(Char,Int)], eqs :: [Equation] }
+data Equation = Equation [Var] Int deriving (Eq,Ord)
+type Var = Char
+
+instance Show Equation where
+  show (Equation bs x) = intercalate "+" [ [b] | b <- bs] ++ "=" ++ show x
+
+instance Show State where
+  show State {ass,eqs} =
+    printf "%s :\n%s" (show ass) (intercalate "\n" (map show eqs))
+
+makeState :: Machine -> State
+makeState Machine{buttons,joltage} = do
+  let labelled = zip ['a'..] buttons
+  let
+    pick :: Int -> [Char]
+    pick i = [ c | (c,Button ns) <- labelled, i `elem` ns ]
+  let eqs = [ Equation (pick i) j | (i,j) <- zip [0..] joltage ]
+  State { eqs, ass = []}
+
+finished :: State -> Bool
+finished State{eqs} = length eqs == 0
+
+pickVar :: State -> (Var,Int)
+pickVar s@State{eqs} = do
+  let Equation xs n = minimumBy (comparing smallerE) eqs
+  case xs of
+    [] -> error (show ("pickVar",s))
+    x:_ -> (x,n)
+    where
+      smallerE (Equation xs _n) = length xs
+      --smallerE (Equation xs n) = (length xs,n)
+
+assignVar :: State -> Var -> Int -> Maybe State
+assignVar State {ass,eqs} x n = do
+  let ass' = (x,n) : ass
+  case allJust [ assignVarE x n e | e <- eqs ] of
+    Nothing -> Nothing
+    Just eqs -> do
+      let eqs' = [ e | e@(Equation (_:_) _) <- eqs ]
+      Just $ State {ass = ass', eqs = eqs'}
+
+assignVarE :: Var -> Int -> Equation -> Maybe Equation
+assignVarE x i e@(Equation xs n) =
+  if x `elem` xs
+  then mkEquation (filter (/=x) xs) (n-i)
+  else Just e
+
+mkEquation :: [Var] -> Int -> Maybe Equation
+mkEquation xs n =
+  if (n < 0 || case xs of [] -> n > 0; _:_ -> False) then Nothing else
+    Just (Equation xs n)
+
+allJust :: [Maybe a] -> Maybe [a]
+allJust = traverse id
+
 data Machine = Machine
   { lights :: [Bool]
   , buttons :: [Button]
   , joltage :: [Int]
-  } deriving Show
+  }
 
-data Button = Button [Int] deriving Show
+instance Show Machine where
+  show Machine {buttons,joltage} =
+    show buttons ++ " -- " ++ show joltage
+
+data Button = Button [Int]
+
+instance Show Button where show (Button xs) = show xs
 
 gram :: Par [Machine]
 gram = separated nl machine
