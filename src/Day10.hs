@@ -8,6 +8,15 @@ import Text.Printf (printf)
 import Data.List (minimumBy)
 import Data.Ord (comparing)
 
+
+import Control.Monad (forM_)
+import Data.List (sortBy)
+--import Data.Ord (comparing)
+import GHC.Int (Int64)
+import System.Clock (TimeSpec(..),getTime,Clock(Monotonic))
+--import Text.Printf (printf)
+
+
 main :: IO ()
 main = do
   sam <- parse gram <$> readFile "input/day10.sample"
@@ -18,14 +27,28 @@ main = do
   part1_inp <- part1 inp
   print ("day10, part1", check 461 $ sum $ part1_inp)
 
-  part2_sam <- part2 sam
-  print ("day10, part1 (sample)", check [10,12,11] $ part2_sam)
+  sam_details <- part2 (zip [1000..] sam)
+  let sam_xs = [ answer | Res{answer} <- sam_details ]
+  print ("day10, part1 (sample)", check [10,12,11] $ sam_xs)
 
   let expected = [128,42,80,9,75,101,80,32,101,219,91,186,59,54,243,90,138,245,64,127,50,59,88,34,160,163,108,101,69,127,69,57,233,52,47,51,49,64,44,52,69,215,307,249,106,185,84,95,88,38,186,11,65,132,104,64,140,200,62,25,66,93,41,82,55,74,62,108,79,105,77,36,52,65,93,50,89,41,195,177,96,116,63,211,68,85,223,56,58,47,40,7,80,30,74,103,52,64,19,138,98,26,196,53,65,112,60,114,94,48,54,88,233,159,79,58,66,283,135,103,114,111,37,127,257,49,70,103,36,26,88,145,39,107,80,76,161,100,171,48,53,215,64,244,80,96,62,102,24,123,105,57,65,70,72,64,89,83,104,50,177,59,229,62,95,58,279]
 
-  xs <- part2 inp
-  print ("day10, part2 (detail)", check expected $ xs)
-  print ("day10, part2", check 16386 $ sum xs)
+  let _hard = [118,141,67,99,10,26,119,131,164]
+  let _easy = [ i | i <- [0..166], i `notElem` _hard ]
+
+  let pick = _easy
+
+  let iPicked = [ (i,x) | (i,x) <- zip [0::Int ..] inp, i `elem` pick ]
+  let xPicked = [ x | (i,x) <- zip [0::Int ..] expected, i `elem` pick ]
+
+  details <- part2 iPicked
+  let xs = [ answer | Res{answer} <- details ]
+
+  --_printTimings [ (duration,info) | Res{duration,info} <- details ]
+
+  print ("day10, part2 (detail)", check xPicked $ xs)
+  print ("day10, part2", check (sum xPicked) $ sum xs)
+  --print ("day10, part2", check 16386 $ sum xs)
   pure ()
 
 
@@ -57,20 +80,23 @@ power n =
       [ False:bs | bs <- bss ] ++ [ True:bs | bs <- bss ]
 
 
-part2 :: [Machine] -> IO [Int]
+data Res = Res { answer :: Int, duration :: Nanos, info :: String }
+
+part2 :: [(Int,Machine)] -> IO [Res]
 part2 ms = do
   printf "\n%d puzzles to solve...\n" (length ms)
-  mapM solve2 (zip [0..] ms)
+  mapM solve2 ms --(zip [0..] ms)
 
-solve2 :: (Int,Machine) -> IO Int
+solve2 :: (Int,Machine) -> IO Res
 solve2 (i,m) = do
   printf "puz#%d: %s\n" i (show m)
   let state = makeState m
-  if i `elem` [10,26,53,99,119,131,164] then print state else pure ()
-  ss <- search state
-  let res = minimum [ sum [ i | (_,i) <- ass ] | State{ass} <- ss ]
+  --if i `elem` [10,26,53,99,119,131,164] then print state else pure ()
+  (ss,duration) <- timed $ search state
+  let answer = minimum [ sum [ i | (_,i) <- ass ] | State{ass} <- ss ]
   --print ("#ss=",length ss,"res=",res)
-  pure res
+  let info = printf "puz-%03d; #sol = %d" i (length ss)
+  pure Res { answer, duration, info }
 
 search :: State -> IO [State]
 search s0 = do
@@ -123,10 +149,12 @@ finished State{eqs} = length eqs == 0
 
 pickVar :: State -> (Var,Int)
 pickVar s@State{eqs} = do
-  let Equation xs n = minimumBy (comparing smallerE) eqs
+  let Equation xs _n = minimumBy (comparing smallerE) eqs
   case xs of
     [] -> error (show ("pickVar",s))
-    x:_ -> (x,n)
+    x:_ -> do
+      let n = minimum [ n | Equation xs n <- eqs, x `elem` xs ]
+      (x,n)
     where
       smallerE (Equation xs _n) = length xs
       --smallerE (Equation xs n) = (length xs,n)
@@ -192,3 +220,31 @@ gram = separated nl machine
       pure xs
 
     ints = separated (lit ',') int
+
+
+----------------------------------------------------------------------
+
+timed :: IO a -> IO (a,Nanos)
+timed io = do
+  before <- getTime Monotonic
+  res <- io
+  after <- getTime Monotonic
+  let TimeSpec{sec,nsec} = after - before
+  let time = Nanos (gig * sec + nsec)
+  pure ( res, time )
+
+_printTimings :: [(Nanos,String)] -> IO ()
+_printTimings xs = do
+  putStrLn "\ntimings:"
+  forM_ (sortBy (comparing fst) xs) $ \(time,info) -> do
+    putStrLn (printf "%s : %s" (show time) info)
+  putStrLn $ "\ntotal = " ++ show (sum (map fst xs))
+
+newtype Nanos = Nanos Int64 deriving (Eq,Ord,Num)
+
+instance Show Nanos where
+  show (Nanos i) = printf "%s%.03fs" (if dub < 10 then "0" else "") dub
+    where dub :: Double = fromIntegral i / fromIntegral gig
+
+gig :: Int64
+gig = 1_000_000_000
