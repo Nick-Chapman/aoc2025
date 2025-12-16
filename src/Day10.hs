@@ -1,42 +1,38 @@
 module Day10 (main) where
 
-import Misc (check,hist) --nub
+import Misc (check,hist,collate)
 import Par4 (parse,Par,many,terminated,separated,alts,int,lit,nl)
 import Data.Map qualified as Map
-import Data.List (intercalate)
+import Data.Map (Map)
 import Text.Printf (printf)
-import Data.List (minimumBy)
 import Data.Ord (comparing)
-
 
 import Control.Monad (forM_)
 import Data.List (sortBy)
---import Data.Ord (comparing)
 import GHC.Int (Int64)
 import System.Clock (TimeSpec(..),getTime,Clock(Monotonic))
---import Text.Printf (printf)
-
 
 main :: IO ()
 main = do
   sam <- parse gram <$> readFile "input/day10.sample"
   inp <- parse gram <$> readFile "input/day10.input"
   part1_sam <- part1 sam
-  print ("day10, part1 (sample-details)", check [2,3,2] $ part1_sam)
+  print ("day10, part1 (sample-detail)", check [2,3,2] $ part1_sam)
   print ("day10, part1 (sample)", check 7 $ sum $ part1_sam)
   part1_inp <- part1 inp
   print ("day10, part1", check 461 $ sum $ part1_inp)
 
   sam_details <- part2 (zip [1000..] sam)
-  let sam_xs = [ answer | Res{answer} <- sam_details ]
-  print ("day10, part1 (sample)", check [10,12,11] $ sam_xs)
+  let _sam_xs = [ answer | Res{answer} <- sam_details ]
+  print ("day10, part2 (sample-detail)", check [10,12,11] $ _sam_xs)
 
-  let expected = [128,42,80,9,75,101,80,32,101,219,91,186,59,54,243,90,138,245,64,127,50,59,88,34,160,163,108,101,69,127,69,57,233,52,47,51,49,64,44,52,69,215,307,249,106,185,84,95,88,38,186,11,65,132,104,64,140,200,62,25,66,93,41,82,55,74,62,108,79,105,77,36,52,65,93,50,89,41,195,177,96,116,63,211,68,85,223,56,58,47,40,7,80,30,74,103,52,64,19,138,98,26,196,53,65,112,60,114,94,48,54,88,233,159,79,58,66,283,135,103,114,111,37,127,257,49,70,103,36,26,88,145,39,107,80,76,161,100,171,48,53,215,64,244,80,96,62,102,24,123,105,57,65,70,72,64,89,83,104,50,177,59,229,62,95,58,279]
+  let expected :: [Int] = [128,42,80,9,75,101,80,32,101,219,91,186,59,54,243,90,138,245,64,127,50,59,88,34,160,163,108,101,69,127,69,57,233,52,47,51,49,64,44,52,69,215,307,249,106,185,84,95,88,38,186,11,65,132,104,64,140,200,62,25,66,93,41,82,55,74,62,108,79,105,77,36,52,65,93,50,89,41,195,177,96,116,63,211,68,85,223,56,58,47,40,7,80,30,74,103,52,64,19,138,98,26,196,53,65,112,60,114,94,48,54,88,233,159,79,58,66,283,135,103,114,111,37,127,257,49,70,103,36,26,88,145,39,107,80,76,161,100,171,48,53,215,64,244,80,96,62,102,24,123,105,57,65,70,72,64,89,83,104,50,177,59,229,62,95,58,279]
 
-  let _hard = [118,141,67,99,10,26,119,131,164]
-  let _easy = [ i | i <- [0..166], i `notElem` _hard ]
+  let all = [0::Int ..166]
+  let _hard = [164,67,118,131,124,99,166] -- slowest 7 take 13 seconds
+  let _easy = [ i | i <- all, i `notElem` _hard ] -- rest take just 2 seconds
 
-  let pick = _easy
+  let pick = all
 
   let iPicked = [ (i,x) | (i,x) <- zip [0::Int ..] inp, i `elem` pick ]
   let xPicked = [ x | (i,x) <- zip [0::Int ..] expected, i `elem` pick ]
@@ -44,7 +40,7 @@ main = do
   details <- part2 iPicked
   let xs = [ answer | Res{answer} <- details ]
 
-  --_printTimings [ (duration,info) | Res{duration,info} <- details ]
+  _printTimings [ (duration,info) | Res{duration,info} <- details ]
 
   print ("day10, part2 (detail)", check xPicked $ xs)
   print ("day10, part2", check (sum xPicked) $ sum xs)
@@ -81,106 +77,6 @@ power n =
 
 
 data Res = Res { answer :: Int, duration :: Nanos, info :: String }
-
-part2 :: [(Int,Machine)] -> IO [Res]
-part2 ms = do
-  printf "\n%d puzzles to solve...\n" (length ms)
-  mapM solve2 ms --(zip [0..] ms)
-
-solve2 :: (Int,Machine) -> IO Res
-solve2 (i,m) = do
-  printf "puz#%d: %s\n" i (show m)
-  let state = makeState m
-  --if i `elem` [10,26,53,99,119,131,164] then print state else pure ()
-  (ss,duration) <- timed $ search state
-  let answer = minimum [ sum [ i | (_,i) <- ass ] | State{ass} <- ss ]
-  --print ("#ss=",length ss,"res=",res)
-  let info = printf "puz-%03d; #sol = %d" i (length ss)
-  pure Res { answer, duration, info }
-
-search :: State -> IO [State]
-search s0 = do
-  --print s0
-  prop s0 >>= \case
-    Nothing -> pure []
-    Just s1 -> do
-      if (finished s1) then pure [s1] else do
-        let (x,max) = pickVar s1
-        --print ("pick",x,max)
-        concat <$> sequence [ search s3 | i <- [0..max], Just s3 <- pure (assignVar  s1 x i) ]
-
-prop :: State -> IO (Maybe State)
-prop s =
-  case findUnit s of
-    Nothing -> pure (Just s)
-    Just (x,i) -> do
-      case assignVar s x i of
-        Nothing -> pure Nothing
-        Just s -> prop s
-
-findUnit :: State -> Maybe (Char,Int)
-findUnit State{eqs} = do
-  case [ (c,n) | Equation [c] n <- eqs ] of
-    [] -> Nothing
-    pair:_ -> Just pair
-
-data State = State { ass :: [(Char,Int)], eqs :: [Equation] }
-data Equation = Equation [Var] Int deriving (Eq,Ord)
-type Var = Char
-
-instance Show Equation where
-  show (Equation bs x) = intercalate "+" [ [b] | b <- bs] ++ "=" ++ show x
-
-instance Show State where
-  show State {ass,eqs} =
-    printf "%s :\n%s" (show ass) (intercalate "\n" (map show eqs))
-
-makeState :: Machine -> State
-makeState Machine{buttons,joltage} = do
-  let labelled = zip ['a'..] buttons
-  let
-    pick :: Int -> [Char]
-    pick i = [ c | (c,Button ns) <- labelled, i `elem` ns ]
-  let eqs = [ Equation (pick i) j | (i,j) <- zip [0..] joltage ]
-  State { eqs, ass = []}
-
-finished :: State -> Bool
-finished State{eqs} = length eqs == 0
-
-pickVar :: State -> (Var,Int)
-pickVar s@State{eqs} = do
-  let Equation xs _n = minimumBy (comparing smallerE) eqs
-  case xs of
-    [] -> error (show ("pickVar",s))
-    x:_ -> do
-      let n = minimum [ n | Equation xs n <- eqs, x `elem` xs ]
-      (x,n)
-    where
-      smallerE (Equation xs _n) = length xs
-      --smallerE (Equation xs n) = (length xs,n)
-
-assignVar :: State -> Var -> Int -> Maybe State
-assignVar State {ass,eqs} x n = do
-  let ass' = (x,n) : ass
-  case allJust [ assignVarE x n e | e <- eqs ] of
-    Nothing -> Nothing
-    Just eqs -> do
-      let eqs' = [ e | e@(Equation (_:_) _) <- eqs ]
-      Just $ State {ass = ass', eqs = eqs'}
-
-assignVarE :: Var -> Int -> Equation -> Maybe Equation
-assignVarE x i e@(Equation xs n) =
-  if x `elem` xs
-  then mkEquation (filter (/=x) xs) (n-i)
-  else Just e
-
-mkEquation :: [Var] -> Int -> Maybe Equation
-mkEquation xs n =
-  if (n < 0 || case xs of [] -> n > 0; _:_ -> False) then Nothing else
-    Just (Equation xs n)
-
-allJust :: [Maybe a] -> Maybe [a]
-allJust = traverse id
 
 data Machine = Machine
   { lights :: [Bool]
@@ -221,7 +117,6 @@ gram = separated nl machine
 
     ints = separated (lit ',') int
 
-
 ----------------------------------------------------------------------
 
 timed :: IO a -> IO (a,Nanos)
@@ -248,3 +143,90 @@ instance Show Nanos where
 
 gig :: Int64
 gig = 1_000_000_000
+
+----------------------------------------------------------------------
+-- part2 (new aproach)
+
+part2 :: [(Int,Machine)] -> IO [Res]
+part2 ms = do
+  printf "\n%d puzzles to solve...\n" (length ms)
+  mapM solve2 ms
+
+solve2 :: (Int,Machine) -> IO Res
+solve2 (i,m) = do
+  let Machine{buttons} = m
+  printf "puz#%d : %s \n" i (show buttons)
+  let state = makeState m
+  (answers,duration) <- timed $ search 2 buttons state
+  let answer = minimum answers
+  --print ("#answers",answers)
+  --print ("answer",answer)
+  let info = printf "puz-%03d" i
+  pure Res { answer, duration, info }
+
+data State = State { js :: [Int] } deriving (Eq,Ord)
+
+makeState :: Machine -> State
+makeState Machine{joltage} = State{js = joltage}
+
+instance Show State where show State {js} = printf "%s" (show js)
+
+done :: State -> Bool
+done State{js} = all (==0) js
+
+_printT :: Show a => Int -> a -> IO ()
+_printT n a = putStrLn (replicate n ' ' ++ show a)
+
+type Memo = Map State [Int]
+
+search :: Int -> [Button] -> State -> IO [Int]
+search tab0 buttons s0 = do
+  (answers,_m') <- loop tab0 Map.empty s0
+  pure answers
+  where
+    loop :: Int -> Memo -> State -> IO ([Int],Memo)
+    loop tab memo s = do
+      --_printT tab s
+      if done s then pure ([0],memo) else do
+        case Map.lookup s memo of
+          Just res -> pure (res,memo)
+          Nothing -> do
+            (res,memo) <- inner memo (evenUp buttons s)
+            let memo' = Map.insert s res memo
+            pure (res,memo')
+
+      where
+      inner :: Memo -> [(Int,State)] -> IO ([Int],Memo)
+      inner memo = \case
+        [] -> pure ([],memo)
+        (i,s):more -> do
+          --_printT tab i
+          (as1,memo) <- loop (tab+2) memo (halve s)
+          let as1' = [ (i+2*j) | j <- as1 ]
+          (as2,memo) <- inner memo more
+          let as = as1' ++ as2
+          pure (as,memo)
+
+halve :: State -> State
+halve State{js} = State { js = [ j `div` 2 | j <- js ] }
+
+evenUp :: [Button] -> State -> [(Int,State)]
+evenUp buttons State{js} = do
+  let
+    testCand bs = do
+      let bbs = zip buttons bs
+      let m = hist [ x | (Button xs,bool) <- bbs, bool, x<- xs ]
+      let look :: Int -> Int = \i -> maybe 0 id $ Map.lookup i m
+      let js' = [ j - look i | (i,j) <- zip [0..] js ]
+      let match = all (\j -> even j && j >= 0) js'
+      let num = length [ () | b <- bs, b ]
+      (num, match, js')
+
+  [ (minimum counts,State{js})
+    | (js,counts) <-
+        collate [ (js',num)
+                | bs <- power (length buttons)
+                , let (num,match,js') = testCand bs
+                , match
+                ]
+    ]
