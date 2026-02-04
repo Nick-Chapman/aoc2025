@@ -16,10 +16,6 @@ ghc-options:
   echo -Wno-name-shadowing >> $@
   echo -O2 >> $@
 
-# These dependencies are not discovered by gcc -M (not sure why)
-xdepends:
-  echo 'main.o : Timing.hi' >> $@
-
 default-extensions:
   echo LambdaCase >> $@
   echo DuplicateRecordFields >> $@
